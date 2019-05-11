@@ -54,6 +54,7 @@ string train_help()
     "-a <path>: set labels to the negatives (default 0)\n"
     "-c <threads>: set number of cores\n"
     "-k <rank>: set number of rank\n"
+    "--weight: apply propensity score"
     "-s <rank>: set scheme of p q (default 0)\n"
     "   -- 0 constant w \n"
     "   -- 1 w * probability\n"
@@ -208,6 +209,10 @@ Option parse_option(int argc, char **argv)
 
             option.test_path_2 = string(args[i]);
             option.test_with_two_data = true;
+        }
+        else if(args[i].compare("--weighted") == 0)
+        {
+            option.param->has_ps = true;
         }
         else
         {

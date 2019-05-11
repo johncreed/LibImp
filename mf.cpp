@@ -209,57 +209,6 @@ void ImpData::read() {
     RT.row_ptr[0] = 0;
 }
 
-void ImpProblem::set_weight(const smat &R, const ImpLong m, vector<ImpDouble> &w_p, const ImpInt scheme) {
-    w_p.resize(m);
-    if (scheme == 1) { 
-#pragma omp parallel for schedule(static)
-        for(ImpInt i = 0; i < m; i++ ) {
-            w_p[i] = R.row_ptr[i+1] - R.row_ptr[i];
-            w_p[i] = param->w*w_p[i]/R.row_ptr[m];
-            if (w_p[i] < 0)
-              cout<<"Wrong with weight"<<endl;
-        }
-    } else if (scheme ==  2) {
-        ImpDouble p_sum = 0;
-#pragma omp parallel for schedule(static) reduction(+:p_sum)
-        for(ImpInt i = 0; i < m; i++ ) {
-            w_p[i] = R.row_ptr[i+1] - R.row_ptr[i];
-            w_p[i] = 1/(w_p[i]+1);
-            p_sum += w_p[i];
-        }
-#pragma omp parallel for schedule(static)
-        for(ImpInt i = 0; i < m; i++ ) {
-            w_p[i] = param->w*w_p[i]/p_sum;
-            if (w_p[i] < 0)
-              cout<<"Wrong with weight"<<endl;
-        }
-    } else if (scheme == 3) {
-        ImpDouble p_sum = 0;
-#pragma omp parallel for schedule(static) reduction(+:p_sum)
-        for(ImpInt i = 0; i < m; i++ ) {
-            w_p[i] = R.row_ptr[i+1] - R.row_ptr[i];
-            w_p[i] = 1/log2(w_p[i]+2);
-            p_sum += w_p[i];
-        }
-#pragma omp parallel for schedule(static)
-        for(ImpInt i = 0; i < m; i++ ) {
-            w_p[i] = param->w*w_p[i]/p_sum;
-            if (w_p[i] < 0)
-              cout<<"Wrong with weight"<<endl;
-        }
-    } else if (scheme == 0) {
-#pragma omp parallel for schedule(static)
-        for(ImpInt i = 0; i < m; i++ ) {
-            w_p[i] = param->w;
-        }
-    } else {
-#pragma omp parallel for schedule(static)
-        for(ImpInt i = 0; i < m; i++ ) {
-            w_p[i] =1;
-        }
-    }
-}
-
 void ImpData::print_data_info() {
     cout << "Data: " << file_name << "\t";
     cout << "#m: " << m << "\t";
@@ -284,7 +233,7 @@ void ImpProblem::initialize() {
 
 
     default_random_engine engine(0);
-    uniform_real_distribution<ImpFloat> distribution(-1.0/sqrt(k), 1.0/sqrt(k));
+    uniform_real_distribution<ImpFloat> distribution(0/sqrt(k), 1.0/sqrt(k));
     for (ImpInt d = 0; d < k; d++)
     {
         for (ImpLong j = 0; j < m; j++) {
@@ -335,7 +284,7 @@ void ImpProblem::print_epoch_info() {
     cout << endl;
 } 
 
-void ImpProblem::update(const smat &R, ImpLong i, vector<ImpFloat> &gamma, ImpFloat *u, ImpFloat *v, const ImpFloat lambda, const ImpDouble w_p, const vector<ImpDouble> &w_q) {
+void ImpProblem::update(const smat &R, ImpLong i, vector<ImpFloat> &gamma, ImpFloat *u, ImpFloat *v, const ImpFloat lambda, const ImpDouble w_p) {
     ImpFloat a = param->a;
     //ImpFloat w = param->w;
     //ImpInt k = param->k;
@@ -346,10 +295,10 @@ void ImpProblem::update(const smat &R, ImpLong i, vector<ImpFloat> &gamma, ImpFl
         const ImpLong j = R.col_idx[idx];
 
         const ImpDouble v_val = v[j];
-        const ImpDouble ps = w_p == 0? R.p_scores[j]: 1;
+        const ImpDouble ps = param->has_ps? R.p_scores[idx]: 1;
 
-        g += ((1-w_p*w_q[j])*r/ps+w_p*w_q[j]*(1-a))*v_val;
-        h += (1-w_p*w_q[j])*v_val*v_val/ps;
+        g += ((1/ps-w_p)*r+w_p*(1-a))*v_val;
+        h += (1/ps-w_p)*v_val*v_val;
 
     }
     h += w_p*sq;
@@ -362,18 +311,16 @@ void ImpProblem::update(const smat &R, ImpLong i, vector<ImpFloat> &gamma, ImpFl
 ImpDouble ImpProblem::cal_te_loss() {
     ImpInt k = param->k;
     ImpDouble loss = 0;
-    ImpLong m = test_data->m, n = test_data->n;
+    ImpLong m = test_data->m;
     const smat &R = test_data->R;
 #pragma omp parallel for schedule(dynamic) reduction(+:loss)
     for (ImpLong i = 0; i < m; i++) {
-        ImpDouble *w = WT+i;
+        ImpDouble *w = W+i*k;
         for(ImpLong idx = R.row_ptr[i]; idx < R.row_ptr[i+1]; idx++) {
-            if (R.col_idx[idx] > data->n)
-                continue;
-            ImpDouble *h = HT + R.col_idx[idx] ;
+            ImpDouble *h = H+R.col_idx[idx]*k;
             ImpDouble r = 0;
             for (ImpInt d = 0; d < k; d++)
-                r += w[d*m] * h[d*n];
+                r += w[d] * h[d];
             loss += (R.val[idx]-r)*(R.val[idx]-r);
         }
     }
@@ -685,13 +632,13 @@ void ImpProblem::update_coordinates() {
          time2 = omp_get_wtime();
          for (ImpInt s = 0; s < 5; s++) {
             time = omp_get_wtime();
-            cache(WT, H, gamma_w, u, m, n, p);
+            cache(WT, H, gamma_w, u, m, n);
             cache_time += omp_get_wtime() - time;
             time = omp_get_wtime();
 #pragma omp parallel for schedule(dynamic)
             for (ImpLong j = 0; j < n; j++) {
                 if (data->RT.row_ptr[j+1]!=data->RT.row_ptr[j])
-                    update(data->RT, j, gamma_w, v, u, param->lambda_i, q[j] ,p);
+                    update(data->RT, j, gamma_w, v, u, param->lambda_i, param->w);
             }
             update_time += omp_get_wtime() - time;
             //cblas_dcopy(n, v, 1, vt, k);
@@ -701,13 +648,13 @@ void ImpProblem::update_coordinates() {
                 vt[j*k] = v[j];
             sync_time += omp_get_wtime() - time;
             time = omp_get_wtime();
-            cache(HT, W, gamma_h, v, n, m, q);
+            cache(HT, W, gamma_h, v, n, m);
             cache_time += omp_get_wtime() - time;
             time = omp_get_wtime();
 #pragma omp parallel for schedule(dynamic)
             for (ImpLong i = 0; i < m; i++) {
                 if (data->R.row_ptr[i+1]!=data->R.row_ptr[i])
-                    update(data->R, i, gamma_h, u, v, param->lambda_u, p[i], q);
+                    update(data->R, i, gamma_h, u, v, param->lambda_u, param->w);
             }
             update_time += omp_get_wtime() - time;
             //cblas_dcopy(m, u, 1, ut, k);
@@ -731,40 +678,28 @@ void ImpProblem::update_coordinates() {
     cout<< "r time     : "<< r_time <<endl;*/
 }
 
-void ImpProblem::cache(ImpDouble* WT_, ImpDouble* H_, vector<ImpFloat> &gamma, ImpFloat *ut, ImpLong m, ImpLong n, const vector<ImpDouble> &w_q) {
+void ImpProblem::cache(ImpDouble* WT_, ImpDouble* H_, vector<ImpFloat> &gamma, ImpFloat *ut, ImpLong m, ImpLong n) {
     ImpInt k = param->k;
     ImpFloat sq_ = 0, sum_ = 0;
     void *ptr = NULL;
     if (posix_memalign(&ptr, ALIGNByte, sizeof(ImpDouble)*k)) cout <<"Bad alloc at cache"<<endl;
     ImpDouble* alpha = (ImpDouble*)ptr;
-    void *ptr2 = NULL;
-    if (posix_memalign(&ptr2, ALIGNByte, sizeof(ImpDouble)*m)) cout <<"Bad alloc at cache"<<endl;
-    ImpDouble* qut = (ImpDouble*)ptr2;
 
 #pragma omp parallel for schedule(static)
     for (ImpLong j = 0; j < n; j++) {
         gamma[j] = 0;
     }
-    
-#pragma omp parallel for schedule(static)
-    for (ImpLong i = 0; i < m; i++) {
-        qut[i] = 0;
-    }
 
-    //sum_ = cblas_ddot(n, ut, 1, &y, 0);
-    //sq_ = cblas_dnrm2(n, ut, 1);
-    //sq_ = sq_*sq_;
 #pragma omp parallel for schedule(static) reduction(+:sq_,sum_)
     for (ImpInt i = 0; i < m; i++) {
-        sq_ +=  ut[i]*ut[i]*w_q[i];
-        sum_ += ut[i]*w_q[i];
-        qut[i] = ut[i]*w_q[i];
+        sq_ +=  ut[i]*ut[i];
+        sum_ += ut[i];
     }
     //cblas_dgemv(CblasRowMajor, CblasNoTrans, k, m, 1, WT_.data(), k, ut, 1, 0, alpha.data(), 1);
     double time = omp_get_wtime();
 #pragma omp parallel for schedule(static)
     for (ImpInt d = 0; d < k; d++) {
-        alpha[d] = inner(WT_+d*m, qut, m);
+        alpha[d] = inner(WT_+d*m, ut, m);
     }
     mv1_time += omp_get_wtime() -time;
     time = omp_get_wtime();
@@ -777,7 +712,6 @@ void ImpProblem::cache(ImpDouble* WT_, ImpDouble* H_, vector<ImpFloat> &gamma, I
     sum = sum_;
     sq = sq_;
     free(ptr);
-    free(ptr2);
 }
 
 void ImpProblem::solve() {
@@ -790,9 +724,6 @@ void ImpProblem::solve() {
 
     print_header_info(topks);
 
-    set_weight(data->R, data->m, p, -1);
-    set_weight(data->RT, data->n, q, param->scheme);
-
     double time = omp_get_wtime();
     for (t = 0; t < param->nr_pass; t++) {
         update_coordinates();
@@ -800,7 +731,7 @@ void ImpProblem::solve() {
         print_epoch_info();
         //cout << setprecision(3) << sqrt(cal_tr_loss()/data->l) << fixed;
         //cout.width(13);
-        //cout << setprecision(3) << sqrt(cal_te_loss()/test_data->l) << fixed << endl;
+        cout << "MSE: "<< setprecision(3) << sqrt(cal_te_loss()/test_data->l) << fixed << endl;
     }
     cout<<"Training Time: "<< omp_get_wtime() - time <<endl;
     //save();

@@ -27,7 +27,8 @@ public:
     ImpFloat lambda_u, lambda_i, w, a;
     ImpInt nr_pass, k, nr_threads, scheme;
     string model_path, predict_path;
-    Parameter():lambda_u(0.1), lambda_i(0.1), w(1), a(0), nr_pass(20), k(10),nr_threads(1),scheme(0) {};
+    bool has_ps;
+    Parameter():lambda_u(0.1), lambda_i(0.1), w(1), a(0), nr_pass(20), k(10),nr_threads(1),scheme(0), has_ps(false) {};
 };
 
 struct smat {
@@ -75,7 +76,6 @@ public:
     ImpFloat *W, *H;
     ImpFloat *WT, *HT;
 
-    vector<ImpDouble> p, q;
     ImpInt t;
     ImpDouble obj, reg, tr_loss;
     vector<ImpDouble> va_loss;
@@ -91,14 +91,13 @@ public:
     ImpDouble cal_reg();
 
     ImpDouble cal_tr_loss();
-    void update(const smat &R, ImpLong i, vector<ImpFloat> &gamma, ImpDouble *u, ImpDouble *v, const ImpFloat lambda, const ImpDouble w_p, const vector<ImpDouble> &w_q );
+    void update(const smat &R, ImpLong i, vector<ImpFloat> &gamma, ImpDouble *u, ImpDouble *v, const ImpFloat lambda, const ImpDouble w_p);
     void save();
     void load();
 
 
     void initialize();
     void init_va_loss(ImpInt size);
-    void set_weight(const smat &R, const ImpInt m, vector<ImpDouble> &p, const ImpInt scheme);
     void solve();
     void update_R(ImpFloat *wt, ImpFloat *ht, bool add);
 
@@ -109,7 +108,7 @@ public:
     void init_idcg(const ImpLong ii, vector<ImpDouble> &idcg,const vector<ImpInt> &topks);
     ImpDouble ndcg_k(vector<ImpFloat> &Z, ImpLong i, const vector<ImpInt> &topks, vector<double> &ndcgs);
     
-    void cache(ImpDouble* WT, ImpDouble* H, vector<ImpFloat> &gamma, ImpDouble *ut, ImpLong m, ImpLong n, const vector<ImpDouble> &w_q);
+    void cache(ImpDouble* WT, ImpDouble* H, vector<ImpFloat> &gamma, ImpDouble *ut, ImpLong m, ImpLong n);
 
     void update_coordinates();
     void print_epoch_info();
