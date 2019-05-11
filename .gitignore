@@ -30,6 +30,17 @@
 *.exe
 *.out
 *.app
+train
+prdict
+*/train
+*/prdict
 
 # Data
-yh.
+yh.*
+
+# Tags
+tags
+
+# swp tmp files
+*.swp
+*.tmp

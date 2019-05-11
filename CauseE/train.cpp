@@ -44,6 +44,9 @@ string train_help()
     "\n"
     "options:\n"
     "-l <lambda_2>: set regularization coefficient on all regularizer (default 0.1)\n"
+    "-lc <lambda_2>: set regularization coefficient on all regularizer (default 0.1)\n"
+    "-lt <lambda_2>: set regularization coefficient on treat regularizer (default 0.1)\n"
+    "-ldiff <lambda_2>: set regularization coefficient on treat regularizer (default 0.1)\n"
     "-lu <lambda_2>: set regularization coefficient on user regularizer (default 0.1)\n"
     "-li <lambda_2>: set regularization coefficient on item regularizer (default 0.1)\n"
     "-t <iter>: set number of iterations (default 20)\n"
@@ -55,6 +58,7 @@ string train_help()
     "-a <path>: set labels to the negatives (default 0)\n"
     "-c <threads>: set number of cores\n"
     "-k <rank>: set number of rank\n"
+    "--weighted: apply propensity score"
     "-s <rank>: set scheme of p q (default 0)\n"
     "   -- 0 constant w \n"
     "   -- 1 w * probability\n"
@@ -91,6 +95,42 @@ Option parse_option(int argc, char **argv)
                 throw invalid_argument("-l should be followed by a number");
             option.param->lambda_u = atof(argv[i]);
             option.param->lambda_i = atof(argv[i]);
+        }
+        else if(args[i].compare("-lc") == 0)
+        {
+            if((i+1) >= argc)
+                throw invalid_argument("need to specify l\
+                                        regularization coefficient\
+                                        after -l");
+            i++;
+
+            if(!is_numerical(argv[i]))
+                throw invalid_argument("-l should be followed by a number");
+            option.param->lambda_c = atof(argv[i]);
+        }
+        else if(args[i].compare("-lt") == 0)
+        {
+            if((i+1) >= argc)
+                throw invalid_argument("need to specify l\
+                                        regularization coefficient\
+                                        after -l");
+            i++;
+
+            if(!is_numerical(argv[i]))
+                throw invalid_argument("-l should be followed by a number");
+            option.param->lambda_t = atof(argv[i]);
+        }
+        else if(args[i].compare("-ldiff") == 0)
+        {
+            if((i+1) >= argc)
+                throw invalid_argument("need to specify l\
+                                        regularization coefficient\
+                                        after -l");
+            i++;
+
+            if(!is_numerical(argv[i]))
+                throw invalid_argument("-l should be followed by a number");
+            option.param->lambda_treat = atof(argv[i]);
         }
         else if(args[i].compare("-lu") == 0)
         {
@@ -217,6 +257,10 @@ Option parse_option(int argc, char **argv)
 
             option.test_path_2 = string(args[i]);
             option.test_with_two_data = true;
+        }
+        else if(args[i].compare("--weighted") == 0)
+        {
+            option.param->has_ps = true;
         }
         else
         {
