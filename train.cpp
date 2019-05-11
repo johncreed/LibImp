@@ -54,7 +54,7 @@ string train_help()
     "-a <path>: set labels to the negatives (default 0)\n"
     "-c <threads>: set number of cores\n"
     "-k <rank>: set number of rank\n"
-    "--weight: apply propensity score"
+    "--weighted: apply propensity score"
     "-s <rank>: set scheme of p q (default 0)\n"
     "   -- 0 constant w \n"
     "   -- 1 w * probability\n"
